@@ -1,0 +1,103 @@
+{
+  "users": [
+    {
+      "id": "2fcc16a0-5048-47fb-87fd-f645b3f42816",
+      "username": "admin",
+      "passwordHash": "$2a$10$5XwhTyeLq3AoxBFM23n75eNMka8yM31Bf8Xl1kV/iQJApupD3Rc8.",
+      "role": "admin",
+      "name": "الأدمن",
+      "active": true,
+      "createdAt": "2026-10-01T07:58:17.438Z"
+    },
+    {
+      "id": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "username": "m",
+      "passwordHash": "$2a$10$a3yD2WOX6MnWKTGyuU8UqO8Fqwfwx1n0tr8zBj6HFaJHxOTEDsV5a",
+      "role": "employee",
+      "name": ",",
+      "active": true,
+      "createdAt": "2026-10-01T08:03:29.588Z"
+    }
+  ],
+  "checkins": [
+    {
+      "id": "106958a4-3b31-45fb-830a-91d6ed1d6caf",
+      "userId": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "name": ",",
+      "type": "in",
+      "dateKey": "2026-10-01",
+      "time": "2026-10-01T08:21:34.412Z",
+      "lat": 27.25469226717533,
+      "lng": 33.82895083875268,
+      "note": ""
+    },
+    {
+      "id": "24b7fdbd-56f5-4895-836f-ea288d671ced",
+      "userId": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "name": ",",
+      "type": "in",
+      "dateKey": "2026-10-01",
+      "time": "2026-10-01T08:19:46.579Z",
+      "lat": 27.25467247259633,
+      "lng": 33.82897820647971,
+      "note": ""
+    },
+    {
+      "id": "e715a761-4c43-49ba-8707-f79e9257424c",
+      "userId": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "name": ",",
+      "type": "out",
+      "dateKey": "2026-10-01",
+      "time": "2026-10-01T08:05:32.626Z",
+      "lat": 27.25470064527616,
+      "lng": 33.82897005870565,
+      "note": ""
+    },
+    {
+      "id": "ec30bda3-5a85-4806-8924-bfa6ae721d27",
+      "userId": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "name": ",",
+      "type": "in",
+      "dateKey": "2026-10-01",
+      "time": "2026-10-01T08:04:48.545Z",
+      "lat": 27.25470064527616,
+      "lng": 33.82897005870565,
+      "note": ""
+    }
+  ],
+  "deductions": [
+    {
+      "id": "187f260f-560d-46f6-94fb-5231aedcf54e",
+      "userId": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "amount": 25,
+      "reason": "تأخير عن 10:00",
+      "date": "2026-10-01",
+      "auto": true,
+      "createdAt": "2026-10-01T08:05:13.549Z"
+    }
+  ],
+  "leads": [],
+  "messages": [
+    {
+      "id": "619f0c4a-6888-48a9-962b-5c5ea82507fb",
+      "fromId": "2fcc16a0-5048-47fb-87fd-f645b3f42816",
+      "toId": "98835938-cc9b-4054-b673-933a67ff64f9",
+      "text": "m",
+      "createdAt": "2026-10-01T08:04:17.059Z",
+      "read": true
+    }
+  ],
+  "settings": {
+    "workDays": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      6
+    ],
+    "lateCutoff": "10:00",
+    "absenceDeductionAmount": 100,
+    "lateDeductionAmount": 25
+  }
+}
