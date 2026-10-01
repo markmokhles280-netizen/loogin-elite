@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>تسجيل الدخول</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  body{ display:flex; align-items:center; justify-content:center; }
+  .login-card{ width:100%; max-width: 380px; }
+  .eyebrow{ display:flex; align-items:center; gap:8px; color: var(--gold); font-weight:700; font-size:0.88rem; margin-bottom:6px; }
+  .eyebrow .dot{ width:8px; height:8px; border-radius:50%; background: var(--gold); }
+  .err-box{ display:none; background: var(--err-soft); color: var(--err); padding:10px 12px; border-radius:10px; font-size:0.85rem; margin-top:12px; }
+</style>
+</head>
+<body>
+  <div class="login-card card">
+    <div class="eyebrow"><span class="dot"></span>تسجيل الدخول</div>
+    <h1>أهلاً بيك</h1>
+    <p class="muted">ادخل بيانات حسابك</p>
+
+    <form id="loginForm">
+      <label for="username">اسم المستخدم</label>
+      <input type="text" id="username" autocomplete="username" required />
+
+      <label for="password">كلمة السر</label>
+      <input type="password" id="password" autocomplete="current-password" required />
+
+      <div class="err-box" id="errBox"></div>
+
+      <button class="btn gold" style="width:100%; margin-top:18px;" type="submit">دخول</button>
+    </form>
+  </div>
+
+<script>
+const form = document.getElementById('loginForm');
+const errBox = document.getElementById('errBox');
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errBox.style.display = 'none';
+  const username = document.getElementById('username').value.trim();
+  const password = document.getElementById('password').value;
+  try {
+    const res = await fetch('/api/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'فشل الدخول');
+    window.location.href = data.user.role === 'admin' ? '/admin.html' : '/employee.html';
+  } catch (err) {
+    errBox.textContent = err.message;
+    errBox.style.display = 'block';
+  }
+});
+
+// if already logged in, redirect
+fetch('/api/me').then(r => r.json()).then(d => {
+  if (d.ok) window.location.href = d.user.role === 'admin' ? '/admin.html' : '/employee.html';
+}).catch(()=>{});
+</script>
+</body>
+</html>

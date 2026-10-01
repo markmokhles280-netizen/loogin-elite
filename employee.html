@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>لوحة الموظف</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .cam-frame{ border-radius:14px; overflow:hidden; background:#0c1f1e; aspect-ratio:4/3; position:relative; border:1px solid var(--line); margin-top:10px; }
+  video, .snapshot{ width:100%; height:100%; object-fit:cover; display:block; }
+  .snapshot{ display:none; }
+  .type-toggle{ display:flex; gap:8px; margin-top:10px; }
+  .type-toggle button{ flex:1; }
+  .type-toggle button.selected{ outline:2px solid var(--gold); }
+  .status-row{ display:flex; align-items:center; gap:8px; margin-top:10px; font-size:0.82rem; color: var(--ink-soft); }
+  .status-row.ready{ color: var(--ok); }
+  .status-row.error{ color: var(--err); }
+  .lead-card{ border:1px solid var(--line); border-radius:10px; padding:10px 12px; margin-bottom:8px; }
+  .lead-card .top{ display:flex; justify-content:space-between; align-items:center; }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">👋 لوحة الموظف</div>
+    <div class="who">
+      <span id="whoName"></span>
+      <button class="btn-link" id="logoutBtn">تسجيل خروج</button>
+    </div>
+  </div>
+
+  <div class="container grid cols-2">
+    <div class="grid" style="gap:16px;">
+      <div class="card">
+        <h2>تسجيل حضور / انصراف</h2>
+        <div class="type-toggle">
+          <button class="btn ghost selected" id="typeIn" type="button">🟢 حضور</button>
+          <button class="btn ghost" id="typeOut" type="button">🔴 انصراف</button>
+        </div>
+        <div class="cam-frame">
+          <video id="video" autoplay playsinline muted></video>
+          <img id="snapshot" class="snapshot" alt="" />
+        </div>
+        <div class="status-row" id="locStatus">بنحدد موقعك...</div>
+        <button class="btn" id="shootBtn" style="width:100%; margin-top:12px;">📷 التقاط الصورة</button>
+        <button class="btn ghost" id="retakeBtn" style="width:100%; margin-top:8px; display:none;">إعادة الالتقاط</button>
+        <button class="btn gold" id="submitBtn" style="width:100%; margin-top:8px; display:none;">✅ تأكيد</button>
+        <div id="checkinMsg" class="muted" style="margin-top:8px;"></div>
+      </div>
+
+      <div class="card">
+        <h2>آخر تسجيلاتي</h2>
+        <div id="myCheckins"></div>
+      </div>
+    </div>
+
+    <div class="grid" style="gap:16px;">
+      <div class="card">
+        <h2>الخصومات بتاعتي</h2>
+        <div id="myDeductions"></div>
+      </div>
+
+      <div class="card">
+        <h2>الليدز بتاعتي</h2>
+        <div id="myLeads"></div>
+      </div>
+
+      <div class="card">
+        <h2>رسائل مع الإدارة</h2>
+        <div class="chat-list" id="chatList"></div>
+        <div class="chat-input">
+          <input type="text" id="chatInput" placeholder="اكتب رسالة..." />
+          <button class="btn gold sm" id="chatSend">إرسال</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let me = null;
+let stream = null, capturedBlob = null, coords = null, checkinType = 'in';
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2500);
+}
+function fmtTime(iso){
+  return new Date(iso).toLocaleString('ar-EG', { timeZone:'Africa/Cairo', dateStyle:'medium', timeStyle:'short' });
+}
+
+async function api(url, opts={}){
+  const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...opts });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'خطأ');
+  return data;
+}
+
+async function init(){
+  try {
+    const d = await api('/api/me');
+    me = d.user;
+    document.getElementById('whoName').textContent = me.name;
+  } catch {
+    window.location.href = '/login.html';
+    return;
+  }
+  initCamera(); initLocation(); loadCheckins(); loadDeductions(); loadLeads(); loadChat();
+}
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method:'POST' });
+  window.location.href = '/login.html';
+});
+
+async function initCamera(){
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ideal:720} }, audio:false });
+    document.getElementById('video').srcObject = stream;
+  } catch {
+    document.getElementById('locStatus').classList.add('error');
+    document.getElementById('locStatus').textContent = 'محتاجين إذن الكاميرا';
+    document.getElementById('shootBtn').disabled = true;
+  }
+}
+function initLocation(){
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      coords = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      const el = document.getElementById('locStatus');
+      el.classList.add('ready'); el.textContent = 'تم تحديد موقعك ✓';
+    },
+    () => {
+      const el = document.getElementById('locStatus');
+      el.classList.add('error'); el.textContent = 'محتاجين إذن الموقع';
+    },
+    { enableHighAccuracy:true, timeout:10000 }
+  );
+}
+
+document.getElementById('typeIn').addEventListener('click', () => setType('in'));
+document.getElementById('typeOut').addEventListener('click', () => setType('out'));
+function setType(t){
+  checkinType = t;
+  document.getElementById('typeIn').classList.toggle('selected', t==='in');
+  document.getElementById('typeOut').classList.toggle('selected', t==='out');
+}
+
+document.getElementById('shootBtn').addEventListener('click', () => {
+  const video = document.getElementById('video');
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob((blob) => {
+    capturedBlob = blob;
+    const snap = document.getElementById('snapshot');
+    snap.src = URL.createObjectURL(blob); snap.style.display='block';
+    video.style.display='none';
+    document.getElementById('shootBtn').style.display='none';
+    document.getElementById('retakeBtn').style.display='block';
+    document.getElementById('submitBtn').style.display='block';
+  }, 'image/jpeg', 0.9);
+});
+document.getElementById('retakeBtn').addEventListener('click', () => {
+  capturedBlob = null;
+  document.getElementById('snapshot').style.display='none';
+  document.getElementById('video').style.display='block';
+  document.getElementById('shootBtn').style.display='block';
+  document.getElementById('retakeBtn').style.display='none';
+  document.getElementById('submitBtn').style.display='none';
+});
+document.getElementById('submitBtn').addEventListener('click', async () => {
+  if (!capturedBlob) return;
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true; btn.textContent = 'جارِ الإرسال...';
+  const fd = new FormData();
+  fd.append('photo', capturedBlob, 'checkin.jpg');
+  fd.append('type', checkinType);
+  if (coords) { fd.append('lat', coords.lat); fd.append('lng', coords.lng); fd.append('accuracy', coords.accuracy); }
+  try {
+    const res = await fetch('/api/checkin', { method:'POST', body: fd });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error);
+    document.getElementById('checkinMsg').textContent = '✅ اتسجل بنجاح';
+    document.getElementById('retakeBtn').click();
+    loadCheckins();
+  } catch (err) {
+    alert('خطأ: ' + err.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '✅ تأكيد';
+  }
+});
+
+async function loadCheckins(){
+  const d = await api('/api/my/checkins');
+  const box = document.getElementById('myCheckins');
+  if (!d.checkins.length) { box.innerHTML = '<div class="empty">لسه مفيش تسجيلات</div>'; return; }
+  box.innerHTML = d.checkins.slice(0,8).map(c => `
+    <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line); font-size:0.88rem;">
+      <span>${c.type === 'in' ? '🟢 حضور' : '🔴 انصراف'}</span>
+      <span class="muted">${fmtTime(c.time)}</span>
+    </div>`).join('');
+}
+
+async function loadDeductions(){
+  const d = await api('/api/my/deductions');
+  const box = document.getElementById('myDeductions');
+  if (!d.deductions.length) { box.innerHTML = '<div class="empty">مفيش خصومات 🎉</div>'; return; }
+  const total = d.deductions.reduce((s,x)=>s+x.amount,0);
+  box.innerHTML = `<div class="muted" style="margin-bottom:8px;">الإجمالي: <strong style="color:var(--err)">${total} ج.م</strong></div>` +
+    d.deductions.map(x => `
+    <div style="display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line); font-size:0.88rem;">
+      <span>${x.reason}</span>
+      <span style="color:var(--err); font-weight:700;">-${x.amount} ج.م</span>
+    </div>`).join('');
+}
+
+async function loadLeads(){
+  const d = await api('/api/my/leads');
+  const box = document.getElementById('myLeads');
+  if (!d.leads.length) { box.innerHTML = '<div class="empty">مفيش ليدز متوزعة عليك دلوقتي</div>'; return; }
+  box.innerHTML = d.leads.map(l => `
+    <div class="lead-card">
+      <div class="top">
+        <strong>${l.title}</strong>
+        <span class="badge ${l.status}">${statusLabel(l.status)}</span>
+      </div>
+      ${l.phone ? `<div class="muted" style="margin-top:4px;">📞 ${l.phone}</div>` : ''}
+      <select data-id="${l.id}" class="leadStatusSelect" style="margin-top:8px;">
+        ${['assigned','contacted','closed'].map(s => `<option value="${s}" ${s===l.status?'selected':''}>${statusLabel(s)}</option>`).join('')}
+      </select>
+    </div>`).join('');
+  document.querySelectorAll('.leadStatusSelect').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      await api(`/api/my/leads/${sel.dataset.id}`, { method:'PATCH', body: JSON.stringify({ status: sel.value }) });
+      loadLeads();
+    });
+  });
+}
+function statusLabel(s){
+  return { new:'جديد', assigned:'متوزع', contacted:'تم التواصل', closed:'مقفول' }[s] || s;
+}
+
+async function loadChat(){
+  const d = await api('/api/messages/thread');
+  const box = document.getElementById('chatList');
+  if (!d.messages.length) { box.innerHTML = '<div class="empty">ابدأ المحادثة</div>'; return; }
+  box.innerHTML = d.messages.map(m => `
+    <div class="bubble ${m.fromId === me.id ? 'mine' : 'theirs'}">
+      ${escapeHtml(m.text)}
+      <span class="time">${fmtTime(m.createdAt)}</span>
+    </div>`).join('');
+  box.scrollTop = box.scrollHeight;
+}
+function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+document.getElementById('chatSend').addEventListener('click', sendChat);
+document.getElementById('chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChat(); });
+async function sendChat(){
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await api('/api/messages', { method:'POST', body: JSON.stringify({ text }) });
+  loadChat();
+}
+
+init();
+setInterval(loadChat, 8000);
+</script>
+</body>
+</html>

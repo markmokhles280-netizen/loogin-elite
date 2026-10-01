@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>لوحة الأدمن</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+  .pane{ display:none; }
+  .pane.active{ display:block; }
+  .row-actions{ display:flex; gap:6px; }
+  .form-inline{ display:flex; gap:8px; flex-wrap:wrap; align-items:end; margin-bottom:14px; }
+  .form-inline > div{ flex:1; min-width:120px; }
+  .two-col{ display:grid; grid-template-columns: 260px 1fr; gap:16px; }
+  @media (max-width: 760px){ .two-col{ grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="brand">🛠️ لوحة الأدمن</div>
+    <div class="who">
+      <span id="whoName"></span>
+      <button class="btn-link" id="logoutBtn">تسجيل خروج</button>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="tabs">
+      <div class="tab active" data-pane="attendance">الحضور والانصراف</div>
+      <div class="tab" data-pane="employees">الموظفين</div>
+      <div class="tab" data-pane="deductions">الخصومات</div>
+      <div class="tab" data-pane="leads">توزيع الليدز</div>
+      <div class="tab" data-pane="messages">الرسائل</div>
+      <div class="tab" data-pane="settings">الإعدادات</div>
+    </div>
+
+    <!-- ATTENDANCE -->
+    <div class="pane active" id="pane-attendance">
+      <div class="card">
+        <div class="form-inline">
+          <div>
+            <label>التاريخ</label>
+            <input type="text" id="attDate" placeholder="YYYY-MM-DD" />
+          </div>
+          <button class="btn" id="attLoadBtn">عرض</button>
+          <button class="btn gold" id="attAutoGenBtn">توليد خصومات الغياب/التأخير لليوم ده</button>
+        </div>
+        <table>
+          <thead><tr><th>الاسم</th><th>الحالة</th><th>أول حضور</th><th>آخر انصراف</th><th>الموقع</th></tr></thead>
+          <tbody id="attBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- EMPLOYEES -->
+    <div class="pane" id="pane-employees">
+      <div class="card">
+        <h2>إضافة موظف</h2>
+        <div class="form-inline">
+          <div><label>الاسم</label><input type="text" id="newEmpName" /></div>
+          <div><label>اسم المستخدم</label><input type="text" id="newEmpUser" /></div>
+          <div><label>كلمة السر</label><input type="text" id="newEmpPass" /></div>
+          <button class="btn gold" id="addEmpBtn">إضافة</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h2>كل الموظفين</h2>
+        <table>
+          <thead><tr><th>الاسم</th><th>اسم المستخدم</th><th>الحالة</th><th></th></tr></thead>
+          <tbody id="empBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- DEDUCTIONS -->
+    <div class="pane" id="pane-deductions">
+      <div class="card">
+        <h2>تسجيل خصم يدوي</h2>
+        <div class="form-inline">
+          <div><label>الموظف</label><select id="dedEmp"></select></div>
+          <div><label>المبلغ</label><input type="number" id="dedAmount" /></div>
+          <div><label>السبب</label><input type="text" id="dedReason" /></div>
+          <div><label>التاريخ</label><input type="text" id="dedDate" placeholder="YYYY-MM-DD" /></div>
+          <button class="btn gold" id="addDedBtn">تسجيل</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h2>كل الخصومات</h2>
+        <table>
+          <thead><tr><th>الاسم</th><th>المبلغ</th><th>السبب</th><th>التاريخ</th><th></th></tr></thead>
+          <tbody id="dedBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- LEADS -->
+    <div class="pane" id="pane-leads">
+      <div class="card">
+        <h2>إضافة ليد جديد</h2>
+        <div class="form-inline">
+          <div><label>اسم العميل</label><input type="text" id="leadTitle" /></div>
+          <div><label>تليفون</label><input type="text" id="leadPhone" /></div>
+          <div><label>ملاحظات</label><input type="text" id="leadNotes" /></div>
+          <button class="btn gold" id="addLeadBtn">إضافة</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h2>كل الليدز</h2>
+        <table>
+          <thead><tr><th>العميل</th><th>الحالة</th><th>متوزع على</th><th>توزيع</th><th></th></tr></thead>
+          <tbody id="leadBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- MESSAGES -->
+    <div class="pane" id="pane-messages">
+      <div class="card two-col">
+        <div>
+          <h2>الموظفين</h2>
+          <div class="employee-list" id="msgEmpList"></div>
+        </div>
+        <div>
+          <h2 id="msgWithName">اختار موظف</h2>
+          <div class="chat-list" id="adminChatList"></div>
+          <div class="chat-input">
+            <input type="text" id="adminChatInput" placeholder="اكتب رسالة..." />
+            <button class="btn gold sm" id="adminChatSend">إرسال</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="pane" id="pane-settings">
+      <div class="card">
+        <h2>إعدادات الحضور والخصومات</h2>
+        <label>آخر معاد مسموح للحضور قبل ما يتحسب تأخير (HH:MM)</label>
+        <input type="text" id="setCutoff" style="max-width:160px;" />
+
+        <label>قيمة خصم الغياب (ج.م)</label>
+        <input type="number" id="setAbsence" style="max-width:160px;" />
+
+        <label>قيمة خصم التأخير (ج.م)</label>
+        <input type="number" id="setLate" style="max-width:160px;" />
+
+        <label>أيام الشغل</label>
+        <div class="field-row" id="workDaysBoxes"></div>
+
+        <button class="btn gold" id="saveSettingsBtn" style="margin-top:16px;">حفظ</button>
+      </div>
+
+      <div class="card" style="margin-top:14px;">
+        <h2>تغيير كلمة سر الأدمن</h2>
+        <div class="form-inline">
+          <div><label>كلمة السر الحالية</label><input type="password" id="curPass" /></div>
+          <div><label>كلمة السر الجديدة</label><input type="password" id="newPass" /></div>
+          <button class="btn" id="changePassBtn">تغيير</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+let me = null;
+let employees = [];
+let currentChatEmp = null;
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), 2500);
+}
+function todayKey(){ return new Date().toLocaleDateString('en-CA', { timeZone:'Africa/Cairo' }); }
+function fmtTime(iso){ return iso ? new Date(iso).toLocaleTimeString('ar-EG', { timeZone:'Africa/Cairo', hour:'2-digit', minute:'2-digit' }) : '—'; }
+function statusLabel(s){ return {present:'حاضر', absent:'غايب', late:'متأخر','day-off':'إجازة', new:'جديد', assigned:'متوزع', contacted:'تم التواصل', closed:'مقفول'}[s] || s; }
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function api(url, opts={}){
+  const res = await fetch(url, { headers: {'Content-Type':'application/json'}, ...opts });
+  const data = await res.json();
+  if (!data.ok) throw new Error(data.error || 'خطأ');
+  return data;
+}
+
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.pane').forEach(p=>p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById('pane-' + tab.dataset.pane).classList.add('active');
+  });
+});
+
+document.getElementById('logoutBtn').addEventListener('click', async () => {
+  await fetch('/api/logout', { method:'POST' });
+  window.location.href = '/login.html';
+});
+
+async function init(){
+  try {
+    const d = await api('/api/me');
+    me = d.user;
+    if (me.role !== 'admin') { window.location.href = '/employee.html'; return; }
+    document.getElementById('whoName').textContent = me.name;
+  } catch { window.location.href = '/login.html'; return; }
+
+  document.getElementById('attDate').value = todayKey();
+  document.getElementById('dedDate').value = todayKey();
+
+  await loadEmployees();
+  await loadAttendance();
+  await loadDeductions();
+  await loadLeads();
+  await loadSettings();
+  renderMsgEmpList();
+}
+
+// ---------- employees ----------
+async function loadEmployees(){
+  const d = await api('/api/admin/employees');
+  employees = d.employees;
+  const empBody = document.getElementById('empBody');
+  empBody.innerHTML = employees.map(e => `
+    <tr>
+      <td>${escapeHtml(e.name)}</td>
+      <td>${escapeHtml(e.username)}</td>
+      <td><span class="badge ${e.active ? 'present':'absent'}">${e.active ? 'شغال' : 'موقوف'}</span></td>
+      <td class="row-actions">
+        <button class="btn ghost sm" data-toggle="${e.id}">${e.active ? 'إيقاف' : 'تفعيل'}</button>
+        <button class="btn ghost sm" data-resetpass="${e.id}">تغيير باسورد</button>
+        <button class="btn danger sm" data-del="${e.id}">حذف</button>
+      </td>
+    </tr>`).join('') || '<tr><td colspan="4" class="empty">مفيش موظفين لسه</td></tr>';
+
+  empBody.querySelectorAll('[data-toggle]').forEach(btn => btn.addEventListener('click', async () => {
+    const emp = employees.find(x => x.id === btn.dataset.toggle);
+    await api(`/api/admin/employees/${emp.id}`, { method:'PATCH', body: JSON.stringify({ active: !emp.active }) });
+    loadEmployees();
+  }));
+  empBody.querySelectorAll('[data-resetpass]').forEach(btn => btn.addEventListener('click', async () => {
+    const p = prompt('كلمة السر الجديدة:');
+    if (!p) return;
+    await api(`/api/admin/employees/${btn.dataset.resetpass}`, { method:'PATCH', body: JSON.stringify({ password: p }) });
+    toast('تم تغيير كلمة السر');
+  }));
+  empBody.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('متأكد من حذف الموظف؟')) return;
+    await api(`/api/admin/employees/${btn.dataset.del}`, { method:'DELETE' });
+    loadEmployees(); renderMsgEmpList();
+  }));
+
+  const dedSel = document.getElementById('dedEmp');
+  dedSel.innerHTML = employees.map(e => `<option value="${e.id}">${escapeHtml(e.name)}</option>`).join('');
+}
+
+document.getElementById('addEmpBtn').addEventListener('click', async () => {
+  const name = document.getElementById('newEmpName').value.trim();
+  const username = document.getElementById('newEmpUser').value.trim();
+  const password = document.getElementById('newEmpPass').value.trim();
+  if (!name || !username || !password) return alert('اكمل البيانات');
+  try {
+    await api('/api/admin/employees', { method:'POST', body: JSON.stringify({ name, username, password }) });
+    document.getElementById('newEmpName').value = '';
+    document.getElementById('newEmpUser').value = '';
+    document.getElementById('newEmpPass').value = '';
+    toast('تم إضافة الموظف');
+    loadEmployees(); renderMsgEmpList();
+  } catch (err) { alert(err.message); }
+});
+
+// ---------- attendance ----------
+document.getElementById('attLoadBtn').addEventListener('click', loadAttendance);
+document.getElementById('attAutoGenBtn').addEventListener('click', async () => {
+  const date = document.getElementById('attDate').value.trim() || todayKey();
+  const d = await api('/api/admin/deductions/auto-generate', { method:'POST', body: JSON.stringify({ date }) });
+  toast(d.message || `تم توليد ${d.created} خصم`);
+  loadDeductions();
+});
+async function loadAttendance(){
+  const date = document.getElementById('attDate').value.trim() || todayKey();
+  const d = await api('/api/admin/attendance?date=' + encodeURIComponent(date));
+  const body = document.getElementById('attBody');
+  body.innerHTML = d.rows.map(r => `
+    <tr>
+      <td>${escapeHtml(r.name)}</td>
+      <td><span class="badge ${r.status}">${statusLabel(r.status)}</span></td>
+      <td>${fmtTime(r.firstIn)}</td>
+      <td>${fmtTime(r.lastOut)}</td>
+      <td>${mapLinks(r)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">مفيش موظفين</td></tr>';
+}
+function mapLinks(r){
+  const links = [];
+  if (r.firstInLat && r.firstInLng) links.push(`<a href="https://maps.google.com/?q=${r.firstInLat},${r.firstInLng}" target="_blank" rel="noopener">📍 الحضور</a>`);
+  if (r.lastOutLat && r.lastOutLng) links.push(`<a href="https://maps.google.com/?q=${r.lastOutLat},${r.lastOutLng}" target="_blank" rel="noopener">📍 الانصراف</a>`);
+  return links.length ? links.join(' | ') : '<span class="muted">—</span>';
+}
+
+// ---------- deductions ----------
+document.getElementById('addDedBtn').addEventListener('click', async () => {
+  const userId = document.getElementById('dedEmp').value;
+  const amount = document.getElementById('dedAmount').value;
+  const reason = document.getElementById('dedReason').value.trim();
+  const date = document.getElementById('dedDate').value.trim() || todayKey();
+  if (!userId || !amount || !reason) return alert('اكمل البيانات');
+  try {
+    await api('/api/admin/deductions', { method:'POST', body: JSON.stringify({ userId, amount, reason, date }) });
+    document.getElementById('dedAmount').value = '';
+    document.getElementById('dedReason').value = '';
+    toast('تم تسجيل الخصم');
+    loadDeductions();
+  } catch (err) { alert(err.message); }
+});
+async function loadDeductions(){
+  const d = await api('/api/admin/deductions');
+  const body = document.getElementById('dedBody');
+  body.innerHTML = d.deductions.map(x => `
+    <tr>
+      <td>${escapeHtml(x.name)}</td>
+      <td style="color:var(--err); font-weight:700;">-${x.amount}</td>
+      <td>${escapeHtml(x.reason)} ${x.auto ? '<span class="badge day-off">أوتوماتيك</span>' : ''}</td>
+      <td>${x.date}</td>
+      <td><button class="btn danger sm" data-del="${x.id}">حذف</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">مفيش خصومات</td></tr>';
+  body.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    await api('/api/admin/deductions/' + btn.dataset.del, { method:'DELETE' });
+    loadDeductions();
+  }));
+}
+
+// ---------- leads ----------
+document.getElementById('addLeadBtn').addEventListener('click', async () => {
+  const title = document.getElementById('leadTitle').value.trim();
+  const phone = document.getElementById('leadPhone').value.trim();
+  const notes = document.getElementById('leadNotes').value.trim();
+  if (!title) return alert('اكتب اسم العميل');
+  await api('/api/admin/leads', { method:'POST', body: JSON.stringify({ title, phone, notes }) });
+  document.getElementById('leadTitle').value = '';
+  document.getElementById('leadPhone').value = '';
+  document.getElementById('leadNotes').value = '';
+  toast('تم إضافة الليد');
+  loadLeads();
+});
+async function loadLeads(){
+  const d = await api('/api/admin/leads');
+  const body = document.getElementById('leadBody');
+  body.innerHTML = d.leads.map(l => `
+    <tr>
+      <td>${escapeHtml(l.title)}${l.phone ? `<div class="muted">${escapeHtml(l.phone)}</div>` : ''}</td>
+      <td><span class="badge ${l.status}">${statusLabel(l.status)}</span></td>
+      <td>${l.assigneeName ? escapeHtml(l.assigneeName) : '—'}</td>
+      <td>
+        <select data-assign="${l.id}">
+          <option value="">بدون توزيع</option>
+          ${employees.map(e => `<option value="${e.id}" ${e.id===l.assignedTo?'selected':''}>${escapeHtml(e.name)}</option>`).join('')}
+        </select>
+      </td>
+      <td><button class="btn danger sm" data-del="${l.id}">حذف</button></td>
+    </tr>`).join('') || '<tr><td colspan="5" class="empty">مفيش ليدز لسه</td></tr>';
+  body.querySelectorAll('[data-assign]').forEach(sel => sel.addEventListener('change', async () => {
+    await api(`/api/admin/leads/${sel.dataset.assign}/assign`, { method:'POST', body: JSON.stringify({ userId: sel.value || null }) });
+    toast('تم التوزيع');
+    loadLeads();
+  }));
+  body.querySelectorAll('[data-del]').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('متأكد؟')) return;
+    await api('/api/admin/leads/' + btn.dataset.del, { method:'DELETE' });
+    loadLeads();
+  }));
+}
+
+// ---------- messages ----------
+function renderMsgEmpList(){
+  const list = document.getElementById('msgEmpList');
+  if (!employees.length) { list.innerHTML = '<div class="empty">مفيش موظفين</div>'; return; }
+  list.innerHTML = employees.map(e => `
+    <div class="employee-row ${currentChatEmp===e.id?'active':''}" data-emp="${e.id}">
+      <span>${escapeHtml(e.name)}</span>
+    </div>`).join('');
+  list.querySelectorAll('[data-emp]').forEach(row => row.addEventListener('click', () => openChat(row.dataset.emp)));
+}
+async function openChat(empId){
+  currentChatEmp = empId;
+  renderMsgEmpList();
+  const emp = employees.find(e => e.id === empId);
+  document.getElementById('msgWithName').textContent = emp ? emp.name : '';
+  await loadAdminChat();
+}
+async function loadAdminChat(){
+  if (!currentChatEmp) return;
+  const d = await api('/api/admin/messages/' + currentChatEmp);
+  const box = document.getElementById('adminChatList');
+  if (!d.messages.length) { box.innerHTML = '<div class="empty">ابدأ المحادثة</div>'; return; }
+  box.innerHTML = d.messages.map(m => `
+    <div class="bubble ${m.fromId === me.id ? 'mine' : 'theirs'}">
+      ${escapeHtml(m.text)}
+      <span class="time">${new Date(m.createdAt).toLocaleString('ar-EG',{timeZone:'Africa/Cairo', dateStyle:'medium', timeStyle:'short'})}</span>
+    </div>`).join('');
+  box.scrollTop = box.scrollHeight;
+}
+document.getElementById('adminChatSend').addEventListener('click', sendAdminChat);
+document.getElementById('adminChatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendAdminChat(); });
+async function sendAdminChat(){
+  if (!currentChatEmp) return alert('اختار موظف الأول');
+  const input = document.getElementById('adminChatInput');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  await api('/api/admin/messages/' + currentChatEmp, { method:'POST', body: JSON.stringify({ text }) });
+  loadAdminChat();
+}
+
+// ---------- settings ----------
+const weekdayNames = ['الأحد','الإتنين','التلات','الأربع','الخميس','الجمعة','السبت'];
+async function loadSettings(){
+  const d = await api('/api/admin/settings');
+  const s = d.settings;
+  document.getElementById('setCutoff').value = s.lateCutoff;
+  document.getElementById('setAbsence').value = s.absenceDeductionAmount;
+  document.getElementById('setLate').value = s.lateDeductionAmount;
+  const box = document.getElementById('workDaysBoxes');
+  box.innerHTML = weekdayNames.map((n, i) => `
+    <label style="display:flex; align-items:center; gap:6px; font-weight:400;">
+      <input type="checkbox" value="${i}" ${s.workDays.includes(i) ? 'checked' : ''} class="workDayChk" /> ${n}
+    </label>`).join('');
+}
+document.getElementById('saveSettingsBtn').addEventListener('click', async () => {
+  const workDays = [...document.querySelectorAll('.workDayChk:checked')].map(c => Number(c.value));
+  await api('/api/admin/settings', { method:'PATCH', body: JSON.stringify({
+    lateCutoff: document.getElementById('setCutoff').value.trim(),
+    absenceDeductionAmount: document.getElementById('setAbsence').value,
+    lateDeductionAmount: document.getElementById('setLate').value,
+    workDays,
+  })});
+  toast('تم الحفظ');
+});
+document.getElementById('changePassBtn').addEventListener('click', async () => {
+  const currentPassword = document.getElementById('curPass').value;
+  const newPassword = document.getElementById('newPass').value;
+  try {
+    await api('/api/me/password', { method:'POST', body: JSON.stringify({ currentPassword, newPassword }) });
+    document.getElementById('curPass').value = '';
+    document.getElementById('newPass').value = '';
+    toast('تم تغيير كلمة السر');
+  } catch (err) { alert(err.message); }
+});
+
+init();
+setInterval(() => { if (currentChatEmp) loadAdminChat(); }, 8000);
+</script>
+</body>
+</html>
