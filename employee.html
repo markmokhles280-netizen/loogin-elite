@@ -147,14 +147,34 @@ document.querySelectorAll('#filterToggle [data-filter]').forEach(btn => {
   });
 });
 
+async function waitForFaceApi(maxTries = 80){
+  let tries = 0;
+  while (!window.faceapi && tries < maxTries) {
+    await new Promise((r) => setTimeout(r, 100));
+    tries++;
+  }
+  return !!window.faceapi;
+}
+
 async function loadMakeupModels(){
+  const hint = document.getElementById('makeupHint');
+  if (hint) hint.textContent = 'بيتحمّل المكياج...';
+  const ready = await waitForFaceApi();
+  if (!ready) {
+    console.warn('مكتبة face-api.js مترفعتش - اتأكد من الإنترنت');
+    if (hint) hint.textContent = 'تعذّر تحميل المكياج (اتأكد من الإنترنت)';
+    return;
+  }
   try {
     const MODEL_URL = 'https://cdn.jsdelivr.net/gh/justadudewhohacks/face-api.js@master/weights';
     await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
     await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
     modelsReady = true;
+    if (hint) hint.textContent = '✓ المكياج جاهز';
+    setTimeout(() => { if (hint && hint.textContent === '✓ المكياج جاهز') hint.textContent = ''; }, 2000);
   } catch (e) {
     console.warn('تعذّر تحميل موديل المكياج، هيشتغل الموقع عادي من غيره', e);
+    if (hint) hint.textContent = 'تعذّر تحميل المكياج';
   }
 }
 
