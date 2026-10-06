@@ -45,7 +45,10 @@
           <img id="snapshot" class="snapshot" alt="" />
         </div>
         <div class="status-row" id="locStatus">بنحدد موقعك...</div>
-        <button class="btn" id="shootBtn" style="width:100%; margin-top:12px;">📷 التقاط الصورة</button>
+        <button class="btn ghost sm" id="retryLocBtn" style="display:none; margin-top:8px; width:100%;">🔁 اسمح بالوصول للموقع</button>
+        <div class="muted" id="locHint2" style="display:none; margin-top:6px; font-size:0.78rem;">لو مفيش رسالة ظهرت، دوس على أيقونة 🔒 أو ⓘ جنب لينك الموقع فوق في المتصفح، واختار "السماح" (Allow) لخانة Location</div>
+        <button class="btn" id="shootBtn" style="width:100%; margin-top:12px;" disabled>📷 التقاط الصورة</button>
+        <div class="muted" id="shootHint" style="margin-top:6px; font-size:0.8rem;">لازم توافق على إذن الموقع الأول عشان تقدر تصور</div>
         <button class="btn ghost" id="retakeBtn" style="width:100%; margin-top:8px; display:none;">إعادة الالتقاط</button>
         <button class="btn gold" id="submitBtn" style="width:100%; margin-top:8px; display:none;">✅ تأكيد</button>
         <div id="checkinMsg" class="muted" style="margin-top:8px;"></div>
@@ -118,31 +121,70 @@ document.getElementById('logoutBtn').addEventListener('click', async () => {
   window.location.href = '/login.html';
 });
 
+let cameraReady = false;
+let locationGranted = false;
+
+function updateShootAvailability(){
+  const btn = document.getElementById('shootBtn');
+  const hint = document.getElementById('shootHint');
+  btn.disabled = !(cameraReady && locationGranted);
+  hint.textContent = !locationGranted
+    ? 'لازم توافق على إذن الموقع الأول عشان تقدر تصور'
+    : (!cameraReady ? 'في انتظار إذن الكاميرا' : '');
+  hint.style.display = (cameraReady && locationGranted) ? 'none' : 'block';
+}
+
 async function initCamera(){
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'user', width:{ideal:720} }, audio:false });
     document.getElementById('video').srcObject = stream;
+    cameraReady = true;
   } catch {
-    document.getElementById('locStatus').classList.add('error');
-    document.getElementById('locStatus').textContent = 'محتاجين إذن الكاميرا';
-    document.getElementById('shootBtn').disabled = true;
+    cameraReady = false;
+    const el = document.getElementById('checkinMsg');
+    el.textContent = 'محتاجين إذن الكاميرا عشان تقدر تصور';
+    el.style.color = 'var(--err)';
   }
+  updateShootAvailability();
 }
-function initLocation(){
-  if (!navigator.geolocation) return;
+
+function requestLocation(){
+  const el = document.getElementById('locStatus');
+  const retryBtn = document.getElementById('retryLocBtn');
+  el.classList.remove('ready','error');
+  el.textContent = 'بنطلب إذن الموقع...';
+  if (!navigator.geolocation) {
+    el.classList.add('error');
+    el.textContent = 'المتصفح ده مش بيدعم تحديد الموقع';
+    return;
+  }
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       coords = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
-      const el = document.getElementById('locStatus');
-      el.classList.add('ready'); el.textContent = 'تم تحديد موقعك ✓';
+      locationGranted = true;
+      el.classList.add('ready');
+      el.textContent = 'تم تحديد موقعك ✓';
+      retryBtn.style.display = 'none';
+      document.getElementById('locHint2').style.display = 'none';
+      updateShootAvailability();
     },
-    () => {
-      const el = document.getElementById('locStatus');
-      el.classList.add('error'); el.textContent = 'محتاجين إذن الموقع';
+    (err) => {
+      locationGranted = false;
+      el.classList.add('error');
+      if (err.code === err.PERMISSION_DENIED) {
+        el.textContent = 'لازم توافق على طلب الموقع عشان تقدر تسجل الحضور';
+      } else {
+        el.textContent = 'مش قادرين نحدد موقعك، جرب تاني';
+      }
+      retryBtn.style.display = 'block';
+      document.getElementById('locHint2').style.display = 'block';
+      updateShootAvailability();
     },
     { enableHighAccuracy:true, timeout:10000 }
   );
 }
+document.getElementById('retryLocBtn').addEventListener('click', requestLocation);
+function initLocation(){ requestLocation(); }
 
 document.getElementById('typeIn').addEventListener('click', () => setType('in'));
 document.getElementById('typeOut').addEventListener('click', () => setType('out'));
