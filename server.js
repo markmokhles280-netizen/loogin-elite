@@ -6,6 +6,7 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDb, persist, newId, findUserByUsername, findUserById } from './db.js';
+import { parseCSV, parsePasted, rowsToLeads, phoneKey, sheetCsvUrl } from './leads-util.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -454,6 +455,174 @@ adminRouter.post('/messages/:employeeId', (req, res) => {
   db.messages.push(msg);
   persist();
   res.json({ ok: true, message: msg });
+});
+
+// ---------- leads: import from sheet/paste + equal distribution ----------
+// Round-robin across active employees; the pointer is saved so the split stays equal across imports.
+function assignRoundRobin(db, leads) {
+  const emps = db.users
+    .filter((u) => u.role === 'employee' && u.active)
+    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  const counts = {};
+  if (!emps.length) return counts;
+  let idx = db.settings.rrIndex || 0;
+  const now = new Date().toISOString();
+  for (const lead of leads) {
+    const e = emps[idx % emps.length];
+    idx++;
+    lead.assignedTo = e.id;
+    lead.status = 'assigned';
+    lead.updatedAt = now;
+    counts[e.name] = (counts[e.name] || 0) + 1;
+  }
+  db.settings.rrIndex = idx % emps.length;
+  return counts;
+}
+
+function importLeads(parsed, source) {
+  const db = getDb();
+  const seen = new Set(db.leads.map((l) => phoneKey(l.phone)).filter(Boolean));
+  const now = new Date().toISOString();
+  const fresh = [];
+  let skipped = 0;
+  for (const p of parsed) {
+    const key = phoneKey(p.phone);
+    if (!key || seen.has(key)) { skipped++; continue; }
+    seen.add(key);
+    fresh.push({
+      id: newId(), title: p.name || p.phone, phone: p.phone, notes: p.notes || '',
+      status: 'new', assignedTo: null, source, campaign: p.campaign || '', createdAt: now, updatedAt: now,
+    });
+  }
+  db.leads.push(...fresh);
+  const perEmployee = assignRoundRobin(db, fresh);
+  persist();
+  const unassigned = fresh.length && !Object.keys(perEmployee).length ? fresh.length : 0;
+  return { added: fresh.length, skipped, perEmployee, unassigned };
+}
+
+async function fetchSheetRows(url) {
+  const csvUrl = sheetCsvUrl(url);
+  if (!csvUrl) throw new Error('اللينك ده مش لينك Google Sheet صحيح');
+  const res = await fetch(csvUrl, { redirect: 'follow' });
+  const type = res.headers.get('content-type') || '';
+  if (!res.ok || type.includes('text/html')) {
+    throw new Error('مش قادرين نفتح الشيت — اتأكد إنه متشارك "أي حد معاه اللينك" (Viewer)');
+  }
+  return parseCSV(await res.text());
+}
+
+adminRouter.post('/leads/import', (req, res) => {
+  const parsed = rowsToLeads(parsePasted(req.body?.text), true);
+  if (!parsed.length) return res.status(400).json({ ok: false, error: 'مفيش أرقام صالحة في النص' });
+  res.json({ ok: true, ...importLeads(parsed, 'paste') });
+});
+
+adminRouter.post('/leads/sync-sheet', async (req, res) => {
+  try {
+    const db = getDb();
+    const { sheetUrl } = req.body || {};
+    if (sheetUrl !== undefined) {
+      db.settings.sheetUrl = String(sheetUrl).trim();
+      persist();
+      if (!db.settings.sheetUrl) return res.json({ ok: true, disconnected: true });
+    }
+    if (!db.settings.sheetUrl) return res.status(400).json({ ok: false, error: 'مفيش شيت مربوط' });
+    const rows = await fetchSheetRows(db.settings.sheetUrl);
+    res.json({ ok: true, ...importLeads(rowsToLeads(rows, false), 'sheet') });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
+});
+
+adminRouter.post('/leads/distribute-unassigned', (req, res) => {
+  const db = getDb();
+  const pending = db.leads.filter((l) => !l.assignedTo);
+  const perEmployee = assignRoundRobin(db, pending);
+  persist();
+  res.json({ ok: true, added: 0, skipped: 0, distributed: pending.length, perEmployee });
+});
+
+// keep the linked sheet in sync: pull new numbers every 5 minutes
+setInterval(async () => {
+  try {
+    const db = getDb();
+    if (!db.settings.sheetUrl) return;
+    const rows = await fetchSheetRows(db.settings.sheetUrl);
+    const r = importLeads(rowsToLeads(rows, false), 'sheet');
+    if (r.added) console.log(`📥 تمت إضافة ${r.added} رقم جديد من الشيت`, r.perEmployee);
+  } catch (err) {
+    console.warn('⚠️ مزامنة الشيت فشلت:', err.message);
+  }
+}, 5 * 60 * 1000);
+
+// ---------- public website lead intake (no login; protected by LEADS_KEY + rate limit) ----------
+// Website form -> POST /api/public/lead  { key, name, phone, note, campaign }
+// New leads arrive unassigned (admin distributes them in the leads tab); duplicate phones just get a note.
+const LEADS_KEY = process.env.LEADS_KEY || '';
+const leadHits = new Map();
+setInterval(() => leadHits.clear(), 10 * 60 * 1000);
+function leadRateLimited(ip) {
+  const now = Date.now();
+  const arr = (leadHits.get(ip) || []).filter((t) => now - t < 60 * 1000);
+  arr.push(now);
+  leadHits.set(ip, arr);
+  return arr.length > 5; // max 5 submissions per minute per IP
+}
+function leadCors(res) {
+  res.set('Access-Control-Allow-Origin', '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
+}
+app.options('/api/public/lead', (req, res) => { leadCors(res); res.sendStatus(204); });
+app.post('/api/public/lead', express.text({ type: '*/*', limit: '20kb' }), (req, res) => {
+  leadCors(res);
+  try {
+    if (!LEADS_KEY) return res.status(503).json({ ok: false, error: 'LEADS_KEY غير مظبوط على السيرفر' });
+    let d = req.body;
+    if (typeof d === 'string') { try { d = JSON.parse(d); } catch { d = {}; } }
+    d = d || {};
+    if (d.website) return res.json({ ok: true }); // honeypot: bots fill this hidden field
+    if (d.key !== LEADS_KEY) return res.status(401).json({ ok: false, error: 'غير مصرح' });
+    const ip = (req.headers['x-forwarded-for'] || '').toString().split(',')[0].trim() || req.ip || 'x';
+    if (leadRateLimited(ip)) return res.status(429).json({ ok: false, error: 'محاولات كتير، جرّب بعد شوية' });
+
+    const name = String(d.name || '').trim().slice(0, 100);
+    const phone = String(d.phone || '').trim().slice(0, 30);
+    const note = String(d.note || '').trim().slice(0, 500);
+    const campaign = String(d.campaign || '').trim().slice(0, 100);
+    if (name.length < 2 || !/^[+\d][\d\s-]{7,20}$/.test(phone)) {
+      return res.status(400).json({ ok: false, error: 'الاسم أو الرقم غير صحيح' });
+    }
+    const notes = (campaign ? `الكامبين: ${campaign}` : '') + (campaign && note ? ' | ' : '') + note;
+    const key = phoneKey(phone);
+    if (!key) return res.status(400).json({ ok: false, error: 'الرقم غير صحيح' });
+    const db = getDb();
+    const now = new Date().toISOString();
+    const existing = db.leads.find((l) => phoneKey(l.phone) === key);
+    if (existing) {
+      // same number registered again: keep one lead, but add a note so the admin sees the repeated interest
+      existing.notes = `${existing.notes ? existing.notes + ' | ' : ''}سجّل تاني ${now.slice(0, 10)}${campaign ? ' (' + campaign + ')' : ''}${note ? ': ' + note : ''}`;
+      existing.updatedAt = now;
+      persist();
+      return res.json({ ok: true, added: 0, duplicate: true });
+    }
+    // New website lead lands UNASSIGNED in the admin "توزيع الليدز" tab so the admin distributes it manually.
+    // Set WEBSITE_AUTO_ASSIGN=1 on the server to distribute equally among employees automatically instead.
+    if (process.env.WEBSITE_AUTO_ASSIGN === '1') {
+      const r = importLeads([{ name, phone, notes, campaign }], 'website');
+      return res.json({ ok: true, added: r.added, duplicate: r.skipped > 0 });
+    }
+    db.leads.push({
+      id: newId(), title: name, phone, notes, status: 'new', assignedTo: null,
+      source: 'website', campaign, createdAt: now, updatedAt: now,
+    });
+    persist();
+    res.json({ ok: true, added: 1, duplicate: false });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: 'حصل خطأ في السيرفر' });
+  }
 });
 
 app.use('/api/admin', adminRouter);
